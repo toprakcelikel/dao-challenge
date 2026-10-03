@@ -1,0 +1,120 @@
+// Prisma schema for the DAO Group Challenge app.
+// SQLite for local/self-contained runs. Swap provider + DATABASE_URL for Postgres in production.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// NOTE: SQLite does not support Prisma enums, so these fields are strings.
+// Allowed values are enforced in app code (see src/lib/constants.ts):
+//   Role:             "STUDENT" | "ADMIN"
+//   ChallengeStatus:  "LOCKED" | "ACTIVE" | "COMPLETED"
+//   SubmissionStatus: "PENDING" | "APPROVED" | "REJECTED"
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  zipCode      String?
+  role         String   @default("STUDENT")
+  groupId      String?
+  group        Group?   @relation(fields: [groupId], references: [id])
+  submissions  Submission[]
+  notifications Notification[]
+  createdAt    DateTime @default(now())
+
+  @@index([groupId])
+}
+
+model Group {
+  id          String       @id @default(cuid())
+  name        String
+  color       String
+  points      Int          @default(0)
+  sortOrder   Int          @default(0)
+  members     User[]
+  submissions Submission[]
+  wins        Challenge[]  @relation("ChallengeWinner")
+}
+
+model Category {
+  id         String      @id @default(cuid())
+  name       String
+  icon       String      @default("🎯")
+  active     Boolean     @default(true)
+  sortOrder  Int         @default(0)
+  challenges Challenge[]
+  createdAt  DateTime    @default(now())
+}
+
+model Challenge {
+  id           String          @id @default(cuid())
+  categoryId   String
+  category     Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  level        Int             @default(1)
+  title        String
+  description  String
+  difficulty   String          @default("Easy")
+  status       String          @default("LOCKED")
+  wonByGroupId String?
+  wonByGroup   Group?          @relation("ChallengeWinner", fields: [wonByGroupId], references: [id])
+  sortOrder    Int             @default(0)
+  maxSubmissions Int           @default(1) @map("maxWinners")
+  submissions  Submission[]
+  createdAt    DateTime        @default(now())
+
+  @@index([categoryId, status])
+  @@index([status])
+  @@index([wonByGroupId])
+}
+
+model Submission {
+  id             String           @id @default(cuid())
+  challengeId    String
+  challenge      Challenge        @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  groupId        String
+  group          Group            @relation(fields: [groupId], references: [id])
+  submittedById  String
+  submittedBy    User             @relation(fields: [submittedById], references: [id])
+  screenshotPath String
+  extraImages    String?
+  videoUrl       String?
+  note           String?
+  status         String           @default("PENDING")
+  adminFeedback  String?
+  createdAt      DateTime         @default(now())
+  reviewedAt     DateTime?
+
+  @@index([status, reviewedAt])
+  @@index([challengeId, status])
+  @@index([groupId, status])
+  @@index([submittedById])
+}
+
+model Notification {
+  id              String   @id @default(cuid())
+  recipientUserId String?
+  recipient       User?    @relation(fields: [recipientUserId], references: [id])
+  recipientRole   String?
+  type            String
+  message         String
+  link            String?
+  read            Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  @@index([recipientUserId])
+  @@index([recipientRole])
+}
+
+// Single-row app settings (e.g., whether the event has ended).
+model AppSettings {
+  id          Int      @id @default(1)
+  eventEnded  Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+}
